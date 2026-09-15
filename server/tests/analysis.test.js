@@ -13,13 +13,13 @@ let userBId;
 let userAAnalysisId;
 
 describe('Analysis Endpoints & Authorization', () => {
-  jest.setTimeout(30000);
+  jest.setTimeout(120000);
 
   beforeAll(async () => {
     mongoServer = await MongoMemoryServer.create();
     const uri = mongoServer.getUri();
     await mongoose.connect(uri);
-  });
+  }, 120000);
 
   beforeEach(async () => {
     await User.deleteMany({});
@@ -51,9 +51,13 @@ describe('Analysis Endpoints & Authorization', () => {
   });
 
   afterAll(async () => {
-    await mongoose.connection.dropDatabase();
-    await mongoose.connection.close();
-    await mongoServer.stop();
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.connection.dropDatabase();
+      await mongoose.connection.close();
+    }
+    if (mongoServer) {
+      await mongoServer.stop();
+    }
   });
 
   test('POST /api/analyses should analyze bug and save to database for user', async () => {

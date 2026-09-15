@@ -7,22 +7,26 @@ const User = require('../models/User');
 let mongoServer;
 
 describe('Auth Endpoints', () => {
-  jest.setTimeout(30000);
+  jest.setTimeout(120000);
 
   beforeAll(async () => {
     mongoServer = await MongoMemoryServer.create();
     const uri = mongoServer.getUri();
     await mongoose.connect(uri);
-  });
+  }, 120000);
 
   afterEach(async () => {
     await User.deleteMany({});
   });
 
   afterAll(async () => {
-    await mongoose.connection.dropDatabase();
-    await mongoose.connection.close();
-    await mongoServer.stop();
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.connection.dropDatabase();
+      await mongoose.connection.close();
+    }
+    if (mongoServer) {
+      await mongoServer.stop();
+    }
   });
 
   test('POST /api/auth/register should create a new user & return JWT token', async () => {
