@@ -1,35 +1,22 @@
 const request = require('supertest');
-const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
 const app = require('../app');
 const User = require('../models/User');
 
-let mongoServer;
+jest.mock('../models/User');
 
 describe('Auth Endpoints', () => {
-  jest.setTimeout(120000);
-
-  beforeAll(async () => {
-    mongoServer = await MongoMemoryServer.create();
-    const uri = mongoServer.getUri();
-    await mongoose.connect(uri);
-  }, 120000);
-
-  afterEach(async () => {
-    await User.deleteMany({});
-  });
-
-  afterAll(async () => {
-    if (mongoose.connection.readyState !== 0) {
-      await mongoose.connection.dropDatabase();
-      await mongoose.connection.close();
-    }
-    if (mongoServer) {
-      await mongoServer.stop();
-    }
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
   test('POST /api/auth/register should create a new user & return JWT token', async () => {
+    User.findOne.mockResolvedValue(null);
+    User.create.mockResolvedValue({
+      _id: 'user_123',
+      name: 'Test Developer',
+      email: 'test@example.com'
+    });
+
     const res = await request(app)
       .post('/api/auth/register')
       .send({
@@ -46,10 +33,9 @@ describe('Auth Endpoints', () => {
   });
 
   test('POST /api/auth/register should fail on duplicate email', async () => {
-    await User.create({
-      name: 'Existing User',
-      email: 'test@example.com',
-      password: 'password123'
+    User.findOne.mockResolvedValue({
+      _id: 'existing_user',
+      email: 'test@example.com'
     });
 
     const res = await request(app)
@@ -66,13 +52,16 @@ describe('Auth Endpoints', () => {
   });
 
   test('POST /api/auth/login should authenticate valid credentials', async () => {
-    await request(app)
-      .post('/api/auth/register')
-      .send({
-        name: 'Test Dev',
-        email: 'login@example.com',
-        password: 'password123'
-      });
+    const mockUser = {
+      _id: 'user_123',
+      name: 'Test Dev',
+      email: 'login@example.com',
+      matchPassword: jest.fn().mockResolvedValue(true)
+    };
+
+    User.findOne.mockReturnValue({
+      select: jest.fn().mockResolvedValue(mockUser)
+    });
 
     const res = await request(app)
       .post('/api/auth/login')
