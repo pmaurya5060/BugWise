@@ -157,5 +157,7 @@ const analysisSchema = new mongoose.Schema(
 );
 
 analysisSchema.index({ userId: 1, createdAt: -1 });
+analysisSchema.index({ userId: 1, category: 1 });
+analysisSchema.index({ userId: 1, severity: 1 });
 
 module.exports = mongoose.model('Analysis', analysisSchema);
