@@ -73,8 +73,83 @@ const analysisSchema = new mongoose.Schema(
       suggestedFix: { type: String, required: true },
       correctedCode: { type: String, default: '' },
       whyItWorks: { type: String, required: true },
-      preventionTips: [{ type: String }]
-    }
+      preventionTips: [{ type: String }],
+      assumptions: { type: String, default: '' },
+      alternativeSolutions: [
+        {
+          title: String,
+          code: String,
+          explanation: String,
+          advantages: String,
+          disadvantages: String,
+          performance: String,
+          useCase: String
+        }
+      ],
+      securityScan: {
+        hasIssues: { type: Boolean, default: false },
+        issues: [
+          {
+            issue: String,
+            severity: String,
+            location: String,
+            explanation: String,
+            mitigation: String
+          }
+        ],
+        disclaimer: {
+          type: String,
+          default: 'Automated AI security scanning cannot guarantee 100% security coverage.'
+        }
+      },
+      performanceScan: {
+        hasIssues: { type: Boolean, default: false },
+        findings: [
+          {
+            problem: String,
+            complexity: String,
+            whyItMatters: String,
+            improvement: String,
+            optimizedCode: String
+          }
+        ]
+      },
+      regressionTest: {
+        framework: { type: String, default: 'Jest' },
+        testCode: { type: String, default: '' },
+        verifies: { type: String, default: '' },
+        edgeCases: [{ type: String }]
+      },
+      teachMe: {
+        concept: { type: String, default: '' },
+        simpleExplanation: { type: String, default: '' },
+        whyCodeFailed: { type: String, default: '' },
+        correctExample: { type: String, default: '' },
+        commonMistakes: [{ type: String }],
+        realWorldUsage: { type: String, default: '' },
+        levels: {
+          beginner: { type: String, default: '' },
+          intermediate: { type: String, default: '' },
+          advanced: { type: String, default: '' }
+        }
+      },
+      interviewMode: {
+        questions: [
+          {
+            question: String,
+            keyPoints: [String],
+            sampleAnswer: String
+          }
+        ]
+      }
+    },
+    chatHistory: [
+      {
+        role: { type: String, enum: ['user', 'assistant'] },
+        message: String,
+        timestamp: { type: Date, default: Date.now }
+      }
+    ]
   },
   {
     timestamps: true
