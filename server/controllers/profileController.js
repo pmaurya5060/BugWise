@@ -73,7 +73,9 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
+const getAnalytics = async (req, res, next) => { try { const Analysis = require('../models/Analysis'); const analyses = await Analysis.find({ userId: req.user._id }); const totalAnalyses = analyses.length; const categoryCounts = {}; const languageCounts = {}; let securityRisksFound = 0; analyses.forEach(a => { const cat = a.result?.category || 'Other'; categoryCounts[cat] = (categoryCounts[cat] || 0) + 1; const lang = a.language || 'Unknown'; languageCounts[lang] = (languageCounts[lang] || 0) + 1; if (a.result?.securityScan?.vulnerabilities?.length > 0) securityRisksFound += a.result.securityScan.vulnerabilities.length; }); res.json({ success: true, data: { totalAnalyses, categoryCounts, languageCounts, securityRisksFound } }); } catch (error) { next(error); } };
 module.exports = {
+  getAnalytics,
   getProfile,
   updateProfile
 };
