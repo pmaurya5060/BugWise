@@ -82,7 +82,7 @@ export default function AnalyticsPage() {
               <PieChart>
                 <Pie data={languageData} cx="50%" cy="50%" outerRadius={80} fill="#8884d8" dataKey="value" label>
                   {languageData.map((entry, index) => (
-                    <Cell key={cell-} fill={COLORS[index % COLORS.length]} />
+                    <Cell key={index} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155' }} />
