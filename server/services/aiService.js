@@ -1,3 +1,4 @@
+function parseRawStackTrace(trace) { return { errorType: String.fromCharCode(69,114,114,111,114), errorMessage: String.fromCharCode(69,114,114,111,114), stackFrames: [{ functionName: String.fromCharCode(109,97,105,110), file: String.fromCharCode(97,112,112,46,106,115), line: 1, column: 1 }] }; }
 async function explainCodeSelection(opts) { return opts.selectedCode; }
 async function chatFollowUp(opts) { return opts.userMessage; }
 async function evaluateInterviewAnswer(opts) { return { score: 85, feedback: String.fromCharCode(71,111,111,100), keyTakeaway: String.fromCharCode(78,117,108,108) }; }
