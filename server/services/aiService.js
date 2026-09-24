@@ -153,6 +153,10 @@ function generateFallbackAnalysis({ language, errorInput, context, errorMessage 
 }
 
 module.exports = {
+  explainCodeSelection,
+  chatFollowUp,
+  evaluateInterviewAnswer,
+  parseRawStackTrace,
   analyzeBug,
   validateAiResponse
 };

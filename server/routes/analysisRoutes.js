@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const {
+  explainSelection,
+  postChatFollowUp,
+  postInterviewEvaluation,
   createAnalysis,
   getAnalyses,
   getAnalysisById,
@@ -15,6 +18,9 @@ router.route('/')
   .post(aiRateLimiter, createAnalysis)
   .get(getAnalyses);
 
+router.post('/explain-selection', explainSelection);
+router.post('/:id/chat', postChatFollowUp);
+router.post('/:id/interview', postInterviewEvaluation);
 router.route('/:id')
   .get(getAnalysisById)
   .delete(deleteAnalysis);
