@@ -1,55 +1,114 @@
-function parseRawStackTrace(trace) { return { errorType: String.fromCharCode(69,114,114,111,114), errorMessage: String.fromCharCode(69,114,114,111,114), stackFrames: [{ functionName: String.fromCharCode(109,97,105,110), file: String.fromCharCode(97,112,112,46,106,115), line: 1, column: 1 }] }; }
-async function explainCodeSelection(opts) { return opts.selectedCode; }
-async function chatFollowUp(opts) { return opts.userMessage; }
-async function evaluateInterviewAnswer(opts) { return { score: 85, feedback: String.fromCharCode(71,111,111,100), keyTakeaway: String.fromCharCode(78,117,108,108) }; }
 const OpenAI = require('openai');
 
-/**
- * Validates and normalizes the AI JSON response object.
- * @param {object} parsed
- * @returns {object} validated object matching exact schema
- */
+function parseRawStackTrace(trace) {
+  if (!trace || typeof trace !== 'string') return null;
+  const lines = trace.split('\n').map(l => l.trim()).filter(Boolean);
+  const errorLine = lines[0];
+  const frames = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith('at ')) {
+      // Regex to extract: at functionName (file:line:column)
+      const match = line.match(/at\s+(.+?)\s+\((.+?):(\d+):(\d+)\)/) || line.match(/at\s+(.+?):(\d+):(\d+)/);
+      if (match) {
+        if (match.length === 5) {
+          frames.push({ functionName: match[1], file: match[2], line: parseInt(match[3], 10), column: parseInt(match[4], 10), raw: line });
+        } else if (match.length === 4) {
+          frames.push({ functionName: '<anonymous>', file: match[1], line: parseInt(match[2], 10), column: parseInt(match[3], 10), raw: line });
+        }
+      } else {
+        frames.push({ raw: line });
+      }
+    }
+  }
+
+  return {
+    errorType: errorLine.split(':')[0] || 'Error',
+    message: errorLine.substring(errorLine.indexOf(':') + 1).trim() || errorLine,
+    frames
+  };
+}
+
 function validateAiResponse(parsed) {
   if (!parsed || typeof parsed !== 'object') {
     throw new Error('AI response is not a valid JSON object');
   }
 
-  const summary = String(parsed.summary || parsed.summaryText || 'Bug analysis summary.').trim();
-  const whatWentWrong = String(parsed.whatWentWrong || parsed.issue || 'The code or error log indicates a runtime/logical failure.').trim();
-  const rootCause = String(parsed.rootCause || parsed.cause || 'Underlying variable, syntax, or environment mismatch.').trim();
-  
-  const likelyCauses = Array.isArray(parsed.likelyCauses)
-    ? parsed.likelyCauses.map(c => String(c).trim()).filter(Boolean)
-    : [rootCause];
-
-  const debuggingSteps = Array.isArray(parsed.debuggingSteps)
-    ? parsed.debuggingSteps.map(s => String(s).trim()).filter(Boolean)
-    : ['Check stack trace line numbers.', 'Verify variable states before execution.', 'Test fix in local isolated environment.'];
-
-  const suggestedFix = String(parsed.suggestedFix || parsed.fix || 'Apply corrected syntax or logic handling.').trim();
-  const correctedCode = String(parsed.correctedCode || parsed.code || '').trim();
-  const whyItWorks = String(parsed.whyItWorks || parsed.explanation || 'Resolves null dereference or type incompatibility.').trim();
-  
-  const preventionTips = Array.isArray(parsed.preventionTips)
-    ? parsed.preventionTips.map(p => String(p).trim()).filter(Boolean)
-    : ['Add input validation and strict type checks.', 'Write unit tests covering edge cases.'];
+  const getString = (val, defaultVal = '') => typeof val === 'string' ? val.trim() : defaultVal;
+  const getArray = (val, defaultVal = []) => Array.isArray(val) ? val.map(v => typeof v === 'string' ? v.trim() : String(v)).filter(Boolean) : defaultVal;
 
   return {
-    summary,
-    whatWentWrong,
-    rootCause,
-    likelyCauses,
-    debuggingSteps,
-    suggestedFix,
-    correctedCode,
-    whyItWorks,
-    preventionTips
+    summary: getString(parsed.summary, 'Bug analysis summary.'),
+    whatWentWrong: getString(parsed.whatWentWrong, 'The code or error log indicates a runtime/logical failure.'),
+    rootCause: getString(parsed.rootCause, 'Underlying variable, syntax, or environment mismatch.'),
+    rootCauseChain: getArray(parsed.rootCauseChain),
+    likelyCauses: getArray(parsed.likelyCauses, [getString(parsed.rootCause)]),
+    debuggingSteps: getArray(parsed.debuggingSteps, ['Check stack trace line numbers.', 'Verify variable states before execution.']),
+    suggestedFix: getString(parsed.suggestedFix, 'Apply corrected syntax or logic handling.'),
+    correctedCode: getString(parsed.correctedCode, ''),
+    whyItWorks: getString(parsed.whyItWorks, 'Resolves the core issue in execution.'),
+    preventionTips: getArray(parsed.preventionTips),
+    assumptions: getString(parsed.assumptions),
+    alternativeSolutions: Array.isArray(parsed.alternativeSolutions) ? parsed.alternativeSolutions.map(s => ({
+      title: getString(s.title),
+      code: getString(s.code),
+      explanation: getString(s.explanation),
+      advantages: getString(s.advantages),
+      disadvantages: getString(s.disadvantages),
+      performance: getString(s.performance),
+      useCase: getString(s.useCase)
+    })) : [],
+    securityScan: {
+      hasIssues: !!(parsed.securityScan?.hasIssues),
+      issues: Array.isArray(parsed.securityScan?.issues) ? parsed.securityScan.issues.map(i => ({
+        issue: getString(i.issue),
+        severity: getString(i.severity),
+        location: getString(i.location),
+        explanation: getString(i.explanation),
+        mitigation: getString(i.mitigation)
+      })) : [],
+      disclaimer: 'Automated AI security scanning cannot guarantee 100% security coverage.'
+    },
+    performanceScan: {
+      hasIssues: !!(parsed.performanceScan?.hasIssues),
+      findings: Array.isArray(parsed.performanceScan?.findings) ? parsed.performanceScan.findings.map(f => ({
+        problem: getString(f.problem),
+        complexity: getString(f.complexity),
+        whyItMatters: getString(f.whyItMatters),
+        improvement: getString(f.improvement),
+        optimizedCode: getString(f.optimizedCode)
+      })) : []
+    },
+    regressionTest: {
+      framework: getString(parsed.regressionTest?.framework, 'Jest'),
+      testCode: getString(parsed.regressionTest?.testCode),
+      verifies: getString(parsed.regressionTest?.verifies),
+      edgeCases: getArray(parsed.regressionTest?.edgeCases)
+    },
+    teachMe: {
+      concept: getString(parsed.teachMe?.concept),
+      simpleExplanation: getString(parsed.teachMe?.simpleExplanation),
+      whyCodeFailed: getString(parsed.teachMe?.whyCodeFailed),
+      correctExample: getString(parsed.teachMe?.correctExample),
+      commonMistakes: getArray(parsed.teachMe?.commonMistakes),
+      realWorldUsage: getString(parsed.teachMe?.realWorldUsage),
+      levels: {
+        beginner: getString(parsed.teachMe?.levels?.beginner),
+        intermediate: getString(parsed.teachMe?.levels?.intermediate),
+        advanced: getString(parsed.teachMe?.levels?.advanced)
+      }
+    },
+    interviewMode: {
+      questions: Array.isArray(parsed.interviewMode?.questions) ? parsed.interviewMode.questions.map(q => ({
+        question: getString(q.question),
+        keyPoints: getArray(q.keyPoints),
+        sampleAnswer: getString(q.sampleAnswer)
+      })) : []
+    }
   };
 }
 
-/**
- * Generate structured bug analysis using OpenAI API or compatible service.
- */
 async function analyzeBug({ language, errorInput, context }) {
   const apiKey = process.env.OPENAI_API_KEY;
   const baseURL = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
@@ -69,12 +128,77 @@ REQUIRED JSON RESPONSE STRUCTURE:
   "summary": "High-level 1-2 sentence overview of the issue",
   "whatWentWrong": "Detailed explanation of what failed during execution",
   "rootCause": "The exact core technical reason causing the bug",
+  "rootCauseChain": ["Trigger", "Intermediate state", "Final Error"],
   "likelyCauses": ["List of 2-4 possible underlying triggers"],
   "debuggingSteps": ["Step 1...", "Step 2...", "Step 3..."],
   "suggestedFix": "Clear explanation of how to fix the issue",
-  "correctedCode": "The fixed code snippet written strictly in the selected language (${language})",
+  "correctedCode": "The fixed code snippet written strictly in the selected language",
   "whyItWorks": "Technical explanation of why this fix solves the issue",
-  "preventionTips": ["Tip 1...", "Tip 2..."]
+  "preventionTips": ["Tip 1...", "Tip 2..."],
+  "assumptions": "Any assumptions made during analysis",
+  "alternativeSolutions": [
+    {
+      "title": "Alternative Fix",
+      "code": "Code snippet",
+      "explanation": "Why this works",
+      "advantages": "Pros",
+      "disadvantages": "Cons",
+      "performance": "Performance tradeoff",
+      "useCase": "When to use this"
+    }
+  ],
+  "securityScan": {
+    "hasIssues": true/false,
+    "issues": [
+      {
+        "issue": "Name of vulnerability",
+        "severity": "High/Medium/Low",
+        "location": "Line or function",
+        "explanation": "Why it is dangerous",
+        "mitigation": "How to fix it safely"
+      }
+    ]
+  },
+  "performanceScan": {
+    "hasIssues": true/false,
+    "findings": [
+      {
+        "problem": "Performance bottleneck",
+        "complexity": "Time/Space complexity",
+        "whyItMatters": "Impact",
+        "improvement": "Optimization strategy",
+        "optimizedCode": "Code snippet"
+      }
+    ]
+  },
+  "regressionTest": {
+    "framework": "Testing framework name",
+    "testCode": "Runnable test code snippet",
+    "verifies": "What this test verifies",
+    "edgeCases": ["Edge case 1", "Edge case 2"]
+  },
+  "teachMe": {
+    "concept": "Core concept behind the bug",
+    "simpleExplanation": "Explanation in simple terms",
+    "whyCodeFailed": "Why the original code failed",
+    "correctExample": "A simple correct example",
+    "commonMistakes": ["Mistake 1", "Mistake 2"],
+    "realWorldUsage": "Where this is used in practice",
+    "levels": {
+      "beginner": "Beginner explanation",
+      "intermediate": "Intermediate explanation",
+      "advanced": "Advanced technical explanation"
+    }
+  },
+  "interviewMode": {
+    "questions": [
+      {
+        "question": "A mock interview question related to this bug",
+        "keyPoints": ["Point 1", "Point 2"],
+        "sampleAnswer": "A good candidate answer"
+      }
+    ]
+  }
 }`;
 
   const userPrompt = `Target Programming Language: ${language}
@@ -90,16 +214,12 @@ Developer Provided Context:
 
 Please analyze this carefully for ${language} and output JSON only.`;
 
-  // Fallback heuristic analyzer if no real API key is supplied or in mock test mode
   if (!apiKey || apiKey === 'mock_key_or_real_key' || apiKey.startsWith('mock_')) {
     return generateFallbackAnalysis({ language, errorInput, context });
   }
 
   try {
-    const openai = new OpenAI({
-      apiKey,
-      baseURL
-    });
+    const openai = new OpenAI({ apiKey, baseURL });
 
     const completion = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
@@ -112,47 +232,82 @@ Please analyze this carefully for ${language} and output JSON only.`;
     });
 
     const rawContent = completion.choices[0]?.message?.content;
-    if (!rawContent) {
-      throw new Error('Empty response received from AI model');
-    }
+    if (!rawContent) throw new Error('Empty response received from AI model');
 
     const parsedJson = JSON.parse(rawContent);
     return validateAiResponse(parsedJson);
   } catch (err) {
     console.error('AI API Call Error:', err.message);
-    // If external AI API call fails, provide graceful fallback structured response instead of crashing
     return generateFallbackAnalysis({ language, errorInput, context, errorMessage: err.message });
   }
 }
 
-function generateFallbackAnalysis({ language, errorInput, context, errorMessage }) {
-  const isTypeError = errorInput.toLowerCase().includes('typeerror') || errorInput.toLowerCase().includes('undefined') || errorInput.toLowerCase().includes('null');
-  const isSyntaxError = errorInput.toLowerCase().includes('syntax') || errorInput.toLowerCase().includes('unexpected token');
+async function explainCodeSelection({ language, selectedCode, context, analysisId }) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || apiKey.startsWith('mock_')) return { explanation: "Fallback: The selected code does " + selectedCode };
+  const openai = new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1' });
+  const completion = await openai.chat.completions.create({
+    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    messages: [
+      { role: 'system', content: 'Explain the purpose and behavior of the selected code clearly and concisely. Respond with a JSON object { "explanation": "..." }' },
+      { role: 'user', content: `Language: ${language}\nSelected Code: ${selectedCode}\nContext: ${context || 'None'}` }
+    ],
+    response_format: { type: 'json_object' }
+  });
+  return JSON.parse(completion.choices[0]?.message?.content);
+}
+
+async function chatFollowUp({ analysisId, chatHistory, userMessage }) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || apiKey.startsWith('mock_')) return { message: "Fallback response to: " + userMessage };
+  const openai = new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1' });
   
+  const messages = [{ role: 'system', content: 'You are a debugging assistant. Help the user with follow-up questions about their buggy code. Respond in JSON object { "message": "..." }' }];
+  chatHistory.forEach(h => messages.push({ role: h.role, content: h.message }));
+  messages.push({ role: 'user', content: userMessage });
+
+  const completion = await openai.chat.completions.create({
+    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    messages,
+    response_format: { type: 'json_object' }
+  });
+  return JSON.parse(completion.choices[0]?.message?.content);
+}
+
+async function evaluateInterviewAnswer({ question, userAnswer, keyPoints }) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || apiKey.startsWith('mock_')) return { score: 85, feedback: "Good fallback answer.", keyTakeaway: "Keep practicing." };
+  const openai = new OpenAI({ apiKey, baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1' });
+  const completion = await openai.chat.completions.create({
+    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    messages: [
+      { role: 'system', content: 'Evaluate the user answer to the interview question. Return JSON { "score": 0-100, "feedback": "...", "keyTakeaway": "..." }' },
+      { role: 'user', content: `Question: ${question}\nKey Points to cover: ${keyPoints}\nUser Answer: ${userAnswer}` }
+    ],
+    response_format: { type: 'json_object' }
+  });
+  return JSON.parse(completion.choices[0]?.message?.content);
+}
+
+function generateFallbackAnalysis({ language, errorInput, context, errorMessage }) {
   return {
-    summary: `Analysis of ${language} issue: ${isTypeError ? 'Null/Undefined reference error' : isSyntaxError ? 'Syntax parsing mismatch' : 'Runtime execution exception'}.`,
-    whatWentWrong: `The ${language} execution environment encountered an unexpected condition while processing input. ${errorMessage ? `(Note: AI Provider note: ${errorMessage})` : ''}`,
-    rootCause: isTypeError 
-      ? `Attempted to access a property or invoke a function on an uninitialized (null or undefined) value in ${language}.`
-      : `Logical or structural mismatch in ${language} source code execution context.`,
-    likelyCauses: [
-      `Variable or object property not initialized before dereference.`,
-      `Asynchronous data loading race condition where response is accessed before completion.`,
-      `Mismatch between expected parameter types or function signature.`
-    ],
-    debuggingSteps: [
-      `Add defensive null checks or optional chaining operator before reading properties.`,
-      `Insert print/log statements right before the failure line to inspect variable values.`,
-      `Verify type definitions and API contract inputs for ${language}.`
-    ],
-    suggestedFix: `Refactor code to ensure values are populated before usage, or guard operations with conditional checks.`,
-    correctedCode: `// Corrected ${language} snippet\nif (data && typeof data === 'object') {\n  // Process safely\n  console.log("Verified payload:", data);\n} else {\n  console.warn("Input data is null or undefined");\n}`,
-    whyItWorks: `Ensures the runtime safely handles empty or unexpected states without throwing uncaught exceptions.`,
-    preventionTips: [
-      `Use strict type checking (TypeScript / static analyzers) where available.`,
-      `Implement guard clauses and sensible fallback default values.`,
-      `Write unit test coverage for edge case inputs.`
-    ]
+    summary: `Fallback analysis for ${language}.`,
+    whatWentWrong: `Unable to reach AI provider. (${errorMessage || 'Unknown error'})`,
+    rootCause: "Fallback root cause.",
+    rootCauseChain: ["Start", "Error"],
+    likelyCauses: ["Network error", "API Limit"],
+    debuggingSteps: ["Check API Key", "Check connectivity"],
+    suggestedFix: "Fix network issues.",
+    correctedCode: errorInput,
+    whyItWorks: "Fallback reason.",
+    preventionTips: ["Use valid API key."],
+    assumptions: "",
+    alternativeSolutions: [],
+    securityScan: { hasIssues: false, issues: [], disclaimer: "Fallback" },
+    performanceScan: { hasIssues: false, findings: [] },
+    regressionTest: { framework: "Jest", testCode: "", verifies: "", edgeCases: [] },
+    teachMe: { concept: "Fallback", simpleExplanation: "Fallback explanation", whyCodeFailed: "", correctExample: "", commonMistakes: [], realWorldUsage: "", levels: { beginner: "", intermediate: "", advanced: "" } },
+    interviewMode: { questions: [] }
   };
 }
 
