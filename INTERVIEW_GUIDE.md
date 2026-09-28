@@ -1,162 +1,33 @@
-# Technical Interview Guide - AI Bug Explainer 🧠💼
+# BugWise - Interview Guide
 
-This document serves as an exhaustive reference guide to prepare for technical software engineering interviews based on the actual codebase implementation of **AI Bug Explainer**.
+## 30-Second Project Explanation
+BugWise is a full-stack web application that helps developers debug their code using AI. Instead of just giving the fixed code, BugWise acts as a senior engineer, generating a visual root-cause timeline, security and performance scans, regression tests, and even mock interview questions based on the exact bug submitted. It's built with React, Node.js, Express, and MongoDB, leveraging the OpenAI API.
 
----
+## 2-Minute Explanation
+BugWise solves the problem of developers relying blindly on AI-generated code by focusing on education and deep analysis. It takes buggy code or stack traces via a professional Monaco editor interface. The backend uses Express and Node.js to route the request to a dedicated AI service, which uses strict prompt engineering to force OpenAI to return a complex, 15-field JSON payload. This payload contains everything from alternative solutions to specific security vulnerabilities. The data is safely parsed, saved to MongoDB Atlas using Mongoose, and returned to a highly modular React frontend. The frontend uses TailwindCSS for a premium dark glassmorphic design, dividing the AI data into clean tabs like "Fix & Diff", "Security & Perf", and an interactive "Interview" panel.
 
-## 📌 1. Project Overview
+## Architecture & Flows
+- **Frontend Flow**: Users interact with modular React components (`OverviewPanel`, `FixPanel`). State is managed locally. Protected API calls include JWTs.
+- **Backend & Database Flow**: Express routers pipe requests through JWT authentication and rate-limiting middleware. Controllers handle business logic and database persistence (MongoDB via Mongoose).
+- **AI Flow**: The `aiService` is isolated from the controllers. It builds context-aware prompts, interacts with OpenAI using `response_format: { type: 'json_object' }`, and rigorously validates the output schema to prevent frontend crashes from malformed JSON.
+- **Authentication Flow**: User registers -> bcrypt hashes password -> saved to MongoDB. User logs in -> bcrypt compares hash -> server signs and returns a stateless JWT -> client stores JWT and attaches it to future requests.
+- **Security Decisions**: User code is NEVER executed on the backend to prevent RCE (Remote Code Execution). OpenAI API keys are kept strictly on the backend. Rate limiting prevents API abuse.
 
-### 30-Second Elevator Pitch
-"AI Bug Explainer is a full-stack developer portfolio project built with React, Node.js, Express, MongoDB, and OpenAI. It converts cryptic runtime stack traces and code snippets into structured JSON root-cause analyses, step-by-step debugging guides, and language-preserved corrected code snippets while providing searchable session history and user isolation."
+## Technology Decisions & Tradeoffs
+- **MongoDB vs SQL**: MongoDB was chosen because the structure of AI responses can evolve, and storing complex nested JSON (like `performanceScan` and `alternativeSolutions`) is much more natural in a document database than heavily normalized SQL tables.
+- **React (Vite)**: Vite provides instant HMR and faster build times than CRA, significantly improving developer velocity.
+- **Monaco Editor**: Selected over simple textareas for professional syntax highlighting and formatting, though it adds to the bundle size.
 
-### 2-Minute In-Depth Overview
-"Debugging complex software errors often involves copying stack traces into search engines or generic chat interfaces, yielding unstructured narrative responses. AI Bug Explainer solves this by creating a dedicated software engineering workflow. 
+## Major Challenges Encountered
+1. **Enforcing AI Response Structure**: LLMs often inject markdown backticks or conversational filler even when asked for JSON. The challenge was solved by using OpenAI's `json_object` response format and writing a strict validation/normalization function on the backend that supplies safe fallbacks if the AI hallucinates missing schema fields.
+2. **Managing Frontend Complexity**: Rendering 15 different data points (diffs, tests, timelines) in a single view was overwhelming. Refactored the monolithic `DashboardPage` into a tabbed interface with dedicated subcomponents (`FixPanel`, `LearningPanel`, etc.), drastically improving maintainability.
 
-Users select their target programming language and submit their error log or stack trace. The Express backend validates inputs and passes them to a isolated AI service module (`services/aiService.js`). The AI service constructs a strict prompt requiring a single, validated JSON schema containing root causes, likely triggers, sequential debugging steps, suggested fixes, and corrected code. 
+## Project-Specific Interview Questions and Answers
+**Q: How do you ensure the AI API key isn't stolen?**
+*A: The API key is securely stored in the backend `.env` file and is never exposed to the client. The frontend only communicates with my Node.js API, which acts as a secure proxy.*
 
-The application uses MongoDB for persisting session history with user ownership checks, JWT authentication for secure session management, bcrypt for password hashing, and express-rate-limit to protect AI endpoints from abuse. The frontend is built with React 18, Vite, Tailwind CSS, and custom hooks."
+**Q: What happens if OpenAI is down?**
+*A: I implemented a `generateFallbackAnalysis` function in the `aiService`. If the API call fails or times out, the server catches the error and returns a gracefully formatted fallback JSON object to the frontend so the application doesn't completely crash.*
 
----
-
-## 🏗️ 2. System Architecture & Request Lifecycle
-
-```
-[React Client] 
-     │ (1) User submits error log via Form
-     ▼
-[Axios API Client] ──(Bearer JWT Header)──► [Express REST Server]
-                                                  │
-                                                  ├──► (2) Helmet & RateLimiter Middleware
-                                                  ├──► (3) Auth Middleware (Verify JWT token)
-                                                  ├──► (4) Controller Input Validation
-                                                  │
-                                                  ▼
-                                         [AI Service Module]
-                                                  │
-                                                  ├──► (5) System Prompt + Schema Formatting
-                                                  ├──► (6) OpenAI / Compatible API Call
-                                                  └──► (7) JSON Response Validation
-                                                  │
-                                                  ▼
-                                         [Mongoose ORM] ──► [MongoDB Database]
-                                                  │          (Save Analysis Document)
-                                                  ▼
-                                         [Express Controller]
-                                                  │
-                                                  ▼
-[React Client UI] ◄──(201 Created JSON)──────────┘
- (Renders Root Cause, Corrected Code, Copy Buttons)
-```
-
----
-
-## 🧠 3. Technology Decisions & Engineering Tradeoffs
-
-| Technology | Reason for Selection | Alternative & Tradeoff Considered |
-| :--- | :--- | :--- |
-| **React (Vite)** | Component-driven architecture, fast HMR build tool, rich UI ecosystem. | **Next.js**: Added SSR complexity wasn't needed for a client dashboard SPA. |
-| **Node.js & Express** | Lightweight, event-driven I/O, seamless JS ecosystem across stack. | **Python/FastAPI**: Python is great for AI, but Node allows unified JS codebase. |
-| **MongoDB (Mongoose)** | Flexible document schema for varying stack traces & nested AI JSON results. | **PostgreSQL**: Relational tables require rigid schema alterations for dynamic AI JSON. |
-| **JWT** | Stateless auth; server doesn't need DB lookup on every API request. | **Session Cookies**: Requires sticky sessions or Redis session store. |
-| **Bcryptjs** | Standard salted password hashing algorithm resisting GPU brute-force. | **Argon2**: Slightly newer, but `bcrypt` has universal support across Node environments. |
-
----
-
-## 🔒 4. Security Implementation Details
-
-1. **Arbitrary Code Execution Prevention**: User code snippets are never executed, evaluated, or compiled on the server. They are passed as plain text strings to the LLM system prompt.
-2. **API Key Isolation**: `OPENAI_API_KEY` and `JWT_SECRET` reside strictly in backend environment variables (`.env`). No secrets are exposed to the client bundle.
-3. **Authorization & Data Isolation**: `Analysis.findById` verifies `analysis.userId.toString() === req.user._id.toString()`. User A can never read or delete User B's history.
-4. **Rate Limiting**: `express-rate-limit` caps AI endpoint requests to 30 requests per 15 minutes per IP.
-
----
-
-## ❓ 5. Interview Questions & Comprehensive Answers
-
-### 🟢 Backend (Node.js / Express / REST) - 25 Questions
-
-#### Q1: Why did you separate `app.js` and `server.js`?
-> **Answer**: `app.js` configures Express middlewares, routes, and error handlers without starting the HTTP listener. `server.js` connects to MongoDB and launches `app.listen()`. This separation allows unit tests (Supertest) to import `app` directly and execute endpoint tests in memory without binding to live network ports.
-
-#### Q2: How does the centralized error handler work?
-> **Answer**: Express recognizes error handling middleware by the signature `(err, req, res, next)`. In `middleware/errorHandler.js`, we intercept Mongoose `ValidationError`, `CastError` (invalid ObjectId), and duplicate key errors (`11000`), returning structured `{ success: false, message }` JSON without leaking internal stack traces in production.
-
-#### Q3: How do you handle CORS in your backend?
-> **Answer**: Using `cors()` middleware with explicit origin checking against allowed URLs (`http://localhost:5173`).
-
-#### Q4: Why use `express-rate-limit` on the AI analysis endpoint?
-> **Answer**: To prevent API quota exhaustion and Denial of Service (DoS) attacks.
-
-#### Q5: How do you validate incoming request bodies?
-> **Answer**: In controllers (e.g. `analysisController.js`), we check that required fields (`language`, `errorInput`) exist and are non-empty before initiating external API calls.
-
-*(Questions Q6 - Q25 cover status codes, REST conventions, JWT headers, middleware chains, etc.)*
-
----
-
-### ⚛️ Frontend (React & State Management) - 20 Questions
-
-#### Q1: How is global authentication managed across React routes?
-> **Answer**: Via `AuthContext.jsx`. It exposes `user`, `token`, `login`, `register`, and `logout` through the `useAuth()` custom hook.
-
-#### Q2: How do protected routes prevent unauthorized rendering?
-> **Answer**: `ProtectedRoute.jsx` checks `isAuthenticated`. If false, it redirects to `/login` with location state preserved for post-login redirect.
-
-#### Q3: Why use Axios interceptors instead of raw `fetch`?
-> **Answer**: Interceptors centrally append `Authorization: Bearer <token>` to every outgoing request and catch `401 Unauthorized` responses to clear invalid tokens.
-
-#### Q4: How is state reset during a new bug analysis submission?
-> **Answer**: When the user submits, `analyzing` is set to `true`, `currentAnalysis` is reset to `null`, and `apiError` is cleared to prevent stale rendering.
-
----
-
-### 🍃 Database & Mongoose - 15 Questions
-
-#### Q1: Why choose MongoDB over a SQL database for this project?
-> **Answer**: AI analysis returns dynamic, nested structures (`likelyCauses`, `debuggingSteps`, `preventionTips`). Storing these in a MongoDB document avoids multi-table joins.
-
-#### Q2: How do indexes improve performance in the Analysis schema?
-> **Answer**: We added a compound index `analysisSchema.index({ userId: 1, createdAt: -1 })` to accelerate user history retrieval.
-
-#### Q3: How do you ensure users can't delete each other's data?
-> **Answer**: In `deleteAnalysis`, we check `analysis.userId.toString() === req.user._id.toString()`. If false, return `403 Forbidden`.
-
----
-
-### 🤖 AI Integration & Prompt Engineering - 15 Questions
-
-#### Q1: Why decouple AI logic into `services/aiService.js`?
-> **Answer**: To isolate LLM dependencies, system prompts, and schema parsing from Express route logic, making it easily testable and replaceable.
-
-#### Q2: How do you ensure the AI model outputs valid JSON?
-> **Answer**: We pass `response_format: { type: 'json_object' }` to OpenAI and run `validateAiResponse()` to fallback default arrays if keys are missing.
-
-#### Q3: How do you prevent prompt injection?
-> **Answer**: System prompt explicitly instructs the LLM to treat user code snippets as untrusted data and ignore embedded system instructions.
-
----
-
-### 🛡️ Security & DevOps - 10 Questions
-
-#### Q1: How are passwords stored securely?
-> **Answer**: Passwords are hashed with `bcryptjs` using a salt round of 10 prior to DB saving.
-
-#### Q2: What security headers does `helmet()` provide?
-> **Answer**: X-Content-Type-Options, Strict-Transport-Security, X-Frame-Options, X-XSS-Protection.
-
----
-
-## 🛠️ Genuine Technical Challenges & Solutions
-
-1. **Challenge**: AI LLM model occasionally returning markdown wrapped JSON (` ```json ... ``` `) causing `JSON.parse` failures.
-   - **Solution**: Implemented regex cleaning and a fallback schema normalizer `validateAiResponse()` that guarantees structural fallback values.
-2. **Challenge**: Test suite hanging due to missing external MongoDB connection.
-   - **Solution**: Integrated `mongodb-memory-server` for isolated in-memory DB testing.
-
----
-
-## 📝 Resume Bullet Points
-
-- **Engineered full-stack AI bug explanation platform** using React, Node.js, Express, MongoDB, and OpenAI, cutting developer debugging time with structured root-cause analysis.
-- **Implemented JWT authentication & data authorization pipeline** with bcrypt password hashing, input sanitization, and user isolation across MongoDB schemas.
-- **Architected robust backend service layer & rate-limited REST API**, achieving 100% test coverage for authentication and CRUD analysis authorization using Jest & Supertest.
+**Q: How does the Context-Aware Follow-up Chat work?**
+*A: The chat drawer relies on an array of `chatHistory` persisted in the MongoDB `Analysis` document. When a user sends a message, the backend appends it to the history, sends the entire thread context (including the original bug) to OpenAI, and persists the new response.*
